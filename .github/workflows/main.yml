@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PMschedule - Construction Schedule PWA</title>
+  <link rel="manifest" href="/manifest.json">
+  <!-- Include Supabase JavaScript client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+</head>
+<body>
+  <nav class="phase-nav" id="nav-bar">
+    <span class="app-title">PMschedule</span>
+    <div class="nav-buttons" id="nav-content">
+      <!-- Dynamic navigation based on login/project -->
+    </div>
+  </nav>
+
+  <div class="content-container" id="main-content">
+    <!-- Login Page -->
+    <div class="login-page" id="login-page">
+      <h2>Login to PMschedule</h2>
+      <input type="email" id="email" placeholder="Email" required>
+      <input type="password" id="password" placeholder="Password" required>
+      <button onclick="login()">Login</button>
+      <button onclick="register()">Register</button>
+    </div>
+
+    <!-- Project Dashboard -->
+    <div class="dashboard" id="dashboard" style="display: none;">
+      <h2>Your Projects</h2>
+      <button onclick="createProject()">Create New Project</button>
+      <ul id="project-list"></ul>
+    </div>
+
+    <!-- Project Phases (Dynamic, hidden by default) -->
+    <div class="project-phases" id="project-phases" style="display: none;">
+      <!-- ... (Phases 1-5 and C.O. remain the same as before) ... -->
+    </div>
+  </div>
+
+  <!-- CSS (unchanged, but included for completeness) -->
+  <style>
+    .phase-container {
+      max-width: 100%;
+      margin: 20px auto;
+      background: #fff;
+      border: 1px solid #007bff;
+      border-radius: 5px;
+      padding: 15px;
+      display: block;
+    }
+
+    .content-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      padding-top: 80px;
+    }
+
+    .login-page {
+      padding: 20px;
+      text-align: center;
+    }
+
+    .login-page input {
+      display: block;
+      margin: 10px auto;
+      padding: 5px;
+      width: 200px;
+    }
+
+    .login-page button {
+      margin: 5px;
+      padding: 8px 12px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+
+    .login-page button:hover {
+      background: #0056b3;
+    }
+
+    /* ... (Rest of the CSS remains the same) ... */
+  </style>
+
+  <!-- JavaScript (updated to ensure login page shows with register button) -->
+  <script>
+    // Initialize Supabase client
+    const supabaseUrl = 'YOUR_SUPABASE_URL'; // Replace with your Supabase URL
+    const supabaseAnonKey = 'YOUR_SUPABASE_ANON_KEY'; // Replace with your Supabase Anon Key
+    const supabase = Supabase.createClient(supabaseUrl, supabaseAnonKey);
+
+    let currentUser = null;
+    let currentProject = null;
+    let phasesData = {};
+    let tasksData = {};
+
+    // User authentication functions
+    async function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+      if (error) {
+        alert('Login failed: ' + error.message);
+        return;
+      }
+
+      currentUser = data.user;
+      await syncUserWithDatabase();
+      showDashboard();
+    }
+
+    async function register() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      const { data, error } = await supabase.auth.signUp({ email, password });
+
+      if (error) {
+        alert('Registration failed: ' + error.message);
+        return;
+      }
+
+      alert('Registration successful! Please check your email to verify your account.');
+    }
+
+    async function logout() {
+      await supabase.auth.signOut();
+      currentUser = null;
+      currentProject = null;
+      showLogin();
+    }
+
+    // Sync user with the users table
+    async function syncUserWithDatabase() {
+      const { data, error } = await supabase
+        .from('users')
+        .upsert({ id: currentUser.id, email: currentUser.email }, { onConflict: 'email' });
+
+      if (error) {
+        console.error('Error syncing user:', error);
+      }
+    }
+
+    // Project management functions (abbreviated for brevity, same as before)
+    async function createProject() {
+      const projectName = prompt('Enter project name:');
+      if (!projectName || !currentUser) return;
+
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .insert({ user_id: currentUser.id, name: projectName })
+        .select()
+        .single();
+
+      if (projectError) {
+        alert('Error creating project: ' + projectError.message);
+        return;
+      }
+
+      // ... (Rest of createProject function remains the same, including phases and tasks insertion) ...
+      loadProjects();
+    }
+
+    async function loadProjects() {
+      const projectList = document.getElementById('project-list');
+      projectList.innerHTML = '';
+      if (!currentUser) return;
+
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('user_id', currentUser.id);
+
+      if (error) {
+        console.error('Error loading projects:', error);
+        return;
+      }
+
+      data.forEach(project => {
+        const li = document.createElement('li');
+        li.innerHTML = `<a href="#" onclick="loadProject('${project.id}')">${project.name}</a> <button onclick="deleteProject('${project.id}')">Delete</button>`;
+        projectList.appendChild(li);
+      });
+
+      document.getElementById('dashboard').style.display = 'block';
+      document.getElementById('login-page').style.display = 'none';
+      document.getElementById('project-phases').style.display = 'none';
+      updateNav();
+    }
+
+    // ... (Rest of the functions like loadProject, loadProjectPhases, loadTasks, etc., remain the same) ...
+
+    // Navigation and state management
+    function showLogin() {
+      document.getElementById('login-page').style.display = 'block';
+      document.getElementById('dashboard').style.display = 'none';
+      document.getElementById('project-phases').style.display = 'none';
+      updateNav();
+    }
+
+    function showDashboard() {
+      loadProjects();
+    }
+
+    function updateNav() {
+      const navContent = document.getElementById('nav-content');
+      navContent.innerHTML = '';
+
+      if (!currentUser) {
+        navContent.innerHTML = '<button onclick="showLogin()">Login</button>'; // Simplified for login page focus
+      } else if (currentProject) {
+        navContent.innerHTML = `
+          <button onclick="showDashboard()">Projects</button>
+          <button onclick="scrollToPhase('phase-1')">Phase 1</button>
+          <button onclick="scrollToPhase('phase-2')">Phase 2</button>
+          <button onclick="scrollToPhase('phase-3')">Phase 3</button>
+          <button onclick="scrollToPhase('phase-4')">Phase 4</button>
+          <button onclick="scrollToPhase('phase-5')">Phase 5</button>
+          <button onclick="scrollToPhase('phase-co')">C.O.</button>
+          <button onclick="logout()">Logout</button>
+        `;
+      } else {
+        navContent.innerHTML = `
+          <button onclick="createProject()">Create Project</button>
+          <button onclick="logout()">Logout</button>
+        `;
+      }
+    }
+
+    // Initialize the app
+    window.onload = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      currentUser = user || null;
+      if (currentUser) {
+        await syncUserWithDatabase();
+        loadProjects();
+      } else {
+        showLogin(); // Ensure login page is shown for unauthenticated users
+      }
+      updatePhaseStatuses();
+    };
+  </script>
+</body>
+</html>
